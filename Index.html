@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbit | Goal & Habit Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .streak-flame { color: #fbbf24; filter: drop-shadow(0 0 5px #f59e0b); }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto space-y-8">
+        <header class="flex flex-col md:flex-row justify-between items-center gap-6 glass p-6 rounded-2xl">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight">ORBIT</h1>
+                <p class="text-slate-400 text-sm">Consistent action leads to massive results.</p>
+            </div>
+            
+            <div id="pomodoro" class="text-center bg-slate-800 p-4 rounded-xl border border-blue-500/30">
+                <div id="timer-display" class="text-4xl font-mono mb-2">25:00</div>
+                <div class="space-x-2">
+                    <button onclick="toggleTimer()" id="timer-btn" class="bg-blue-600 hover:bg-blue-700 px-4 py-1 rounded text-sm transition">Start Deep Work</button>
+                    <button onclick="resetTimer()" class="text-slate-400 hover:text-white text-sm">Reset</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <div class="space-y-6">
+                <section class="glass p-6 rounded-2xl">
+                    <h2 class="text-xl font-semibold mb-4 flex justify-between">
+                        Long-Term Goals 
+                        <button onclick="showGoalModal()" class="text-blue-400 text-sm">+ Add</button>
+                    </h2>
+                    <div id="goals-list" class="space-y-4">
+                        </div>
+                </section>
+
+                <section class="glass p-6 rounded-2xl">
+                    <h2 class="text-xl font-semibold mb-4">Weekly Progress (Hrs)</h2>
+                    <div id="visual-progress" class="h-32 flex items-end gap-2 px-2">
+                        </div>
+                </section>
+            </div>
+
+            <div class="lg:col-span-2 space-y-6">
+                <div class="flex bg-slate-800 p-1 rounded-lg w-fit mx-auto">
+                    <button onclick="setToggle('morning')" id="btn-morning" class="px-6 py-2 rounded-md transition bg-blue-600">Morning Launch</button>
+                    <button onclick="setToggle('evening')" id="btn-evening" class="px-6 py-2 rounded-md transition">Evening Wind-down</button>
+                </div>
+
+                <section class="glass p-6 rounded-2xl min-h-[400px]">
+                    <div class="flex gap-2 mb-6">
+                        <input type="text" id="todo-input" placeholder="Add a specific task..." class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500">
+                        <button onclick="addTodo()" class="bg-slate-700 px-6 py-2 rounded-lg hover:bg-slate-600">Add</button>
+                    </div>
+
+                    <div id="todo-list" class="space-y-3">
+                        </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <div id="log-modal" class="fixed inset-0 bg-black/80 hidden flex items-center justify-center p-4 z-50">
+        <div class="glass p-8 rounded-2xl max-w-sm w-full">
+            <h3 class="text-xl font-bold mb-4">Work Session Complete!</h3>
+            <p class="mb-4 text-slate-300">Which goal did you spend these 25 minutes on?</p>
+            <select id="goal-select" class="w-full bg-slate-900 p-2 rounded mb-6"></select>
+            <button onclick="saveWorkSession()" class="w-full bg-blue-600 py-3 rounded-xl font-bold">Log Session</button>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA STATE ---
+        let state = JSON.parse(localStorage.getItem('orbit_data')) || {
+            goals: [],
+            todos: [],
+            logs: [], // {date, goalId, minutes}
+            view: 'morning'
+        };
+
+        function save() {
+            localStorage.setItem('orbit_data', JSON.stringify(state));
+            render();
+        }
+
+        // --- TIMER LOGIC ---
+        let timeLeft = 1500;
+        let timerInterval = null;
+
+        function toggleTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                document.getElementById('timer-btn').innerText = 'Resume';
+            } else {
+                timerInterval = setInterval(() => {
+                    timeLeft--;
+                    updateTimerDisplay();
+                    if (timeLeft <= 0) {
+                        clearInterval(timerInterval);
+                        showLogModal();
+                    }
+                }, 1000);
+                document.getElementById('timer-btn').innerText = 'Pause';
+            }
+        }
+
+        function updateTimerDisplay() {
+            const m = Math.floor(timeLeft / 60);
+            const s = timeLeft % 60;
+            document.getElementById('timer-display').innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
+        function resetTimer() {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            timeLeft = 1500;
+            updateTimerDisplay();
+            document.getElementById('timer-btn').innerText = 'Start Deep Work';
+        }
+
+        // --- GOALS & TODO LOGIC ---
+        function addTodo() {
+            const input = document.getElementById('todo-input');
+            if (!input.value) return;
+            state.todos.push({
+                id: Date.now(),
+                text: input.value,
+                completed: false,
+                streak: 0,
+                lastCompleted: null,
+                type: state.view
+            });
+            input.value = '';
+            save();
+        }
+
+        function toggleTodo(id) {
+            const todo = state.todos.find(t => t.id === id);
+            if (!todo.completed) {
+                const today = new Date().toDateString();
+                const yesterday = new Date(Date.now() - 86400000).toDateString();
+                
+                if (todo.lastCompleted === yesterday) todo.streak++;
+                else if (todo.lastCompleted !== today) todo.streak = 1;
+                
+                todo.lastCompleted = today;
+            }
+            todo.completed = !todo.completed;
+            save();
+        }
+
+        function showGoalModal() {
+            const title = prompt("Goal Title:");
+            const why = prompt("Why is this important?");
+            const date = prompt("Target Date (YYYY-MM-DD):");
+            if (title) {
+                state.goals.push({ id: Date.now(), title, why, date });
+                save();
+            }
+        }
+
+        // --- UI RENDERING ---
+        function setToggle(view) {
+            state.view = view;
+            document.getElementById('btn-morning').className = view === 'morning' ? 'px-6 py-2 rounded-md transition bg-blue-600' : 'px-6 py-2 rounded-md transition';
+            document.getElementById('btn-evening').className = view === 'evening' ? 'px-6 py-2 rounded-md transition bg-blue-600' : 'px-6 py-2 rounded-md transition';
+            render();
+        }
+
+        function showLogModal() {
+            const select = document.getElementById('goal-select');
+            select.innerHTML = state.goals.map(g => `<option value="${g.id}">${g.title}</option>`).join('');
+            document.getElementById('log-modal').classList.remove('hidden');
+        }
+
+        function saveWorkSession() {
+            const goalId = document.getElementById('goal-select').value;
+            state.logs.push({ date: new Date().toDateString(), goalId, minutes: 25 });
+            document.getElementById('log-modal').classList.add('hidden');
+            resetTimer();
+            save();
+        }
+
+        function render() {
+            // Render Todos
+            const todoList = document.getElementById('todo-list');
+            todoList.innerHTML = state.todos
+                .filter(t => t.type === state.view)
+                .map(t => `
+                    <div class="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" ${t.completed ? 'checked' : ''} onchange="toggleTodo(${t.id})" class="w-5 h-5 rounded border-slate-700 bg-slate-800 text-blue-600">
+                            <span class="${t.completed ? 'line-through text-slate-500' : ''}">${t.text}</span>
+                        </div>
+                        ${t.streak > 0 ? `<span class="streak-flame">🔥 ${t.streak}</span>` : ''}
+                    </div>
+                `).join('');
+
+            // Render Goals
+            const goalList = document.getElementById('goals-list');
+            goalList.innerHTML = state.goals.map(g => {
+                const mins = state.logs.filter(l => l.goalId == g.id).reduce((acc, curr) => acc + curr.minutes, 0);
+                return `
+                    <div class="p-4 bg-blue-500/5 rounded-lg border border-blue-500/20">
+                        <div class="flex justify-between items-start">
+                            <h4 class="font-bold">${g.title}</h4>
+                            <span class="text-xs text-blue-400">${Math.round(mins/60 * 10)/10} hrs</span>
+                        </div>
+                        <p class="text-xs text-slate-500 italic mt-1">"${g.why}"</p>
+                    </div>
+                `;
+            }).join('');
+
+            // Simple Progress Bar Chart (Weekly)
+            const chart = document.getElementById('visual-progress');
+            const days = [...Array(7)].map((_, i) => {
+                const d = new Date(); d.setDate(d.getDate() - i);
+                return d.toDateString();
+            }).reverse();
+            
+            chart.innerHTML = days.map(day => {
+                const dailyMins = state.logs.filter(l => l.date === day).reduce((a, b) => a + b.minutes, 0);
+                const height = Math.min(dailyMins / 3, 100); // Scale 300 mins to 100%
+                return `<div class="flex-1 bg-blue-600 rounded-t-sm" style="height: ${height}%" title="${day}"></div>`;
+            }).join('');
+        }
+
+        render();
+    </script>
+</body>
+</html>
